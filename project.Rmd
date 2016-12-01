@@ -20,4 +20,111 @@ https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
 
 The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
 
-## An
+## Analysis
+
+### Getting the data
+Need for consideration of diverse 'NA' values in raw files. Usage of data.table package faciliates reading a column class assigment (note that data.table syntax is a bit weird)
+
+```{r}
+require(data.table)
+require(caret)
+### data reading
+train.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- fread(train.url)
+
+validation.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+validation <- fread(validation.url)
+
+### explore train set
+# str(train)
+# --> several NA values
+
+### redo data reading
+train.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- fread(train.url, na.strings=c("NA","", "#DIV/0"))
+# str(train)
+
+validation.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+validation <- fread(validation.url, na.strings=c("NA",""))
+# str(validation)
+
+### explore dimensions
+dim(train)
+dim(validation)
+```
+
+I get rid of non-useful columns, e.g. 95% of NA values
+```{r}
+### 1. NAs
+# get NA values by column
+NAbycol <- train[,lapply( .SD, function(x) sum(is.na(x))/nrow(train) )]
+
+# 0.95 seems to be a good threshold
+myNAcols <- as.vector(NAbycol>.95)
+mycols <- names(NAbycol)[myNAcols]
+
+# and get rid of the columns
+train[,(mycols):=NULL]
+validation[,(mycols):=NULL]
+
+### 2. nearly zero variance
+nz <- nearZeroVar(train)
+nz <- names(train)[nz]
+train[,(nz):=NULL]
+validation[,(nz):=NULL]
+
+```
+
+Therefore, only the following variables will be considered in the analysis:
+```{r}
+train[, classe:= factor(classe)]
+# train
+str(train)
+```
+
+
+### Choosing a model
+
+I divide the 'train' data into 'training'(60%) and 'testing'(40%) sets
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y=train$classe, p=0.6, list=FALSE)
+training <- train[inTrain,]
+testing <- train[-inTrain,]
+rm(train)
+```
+
+I will try first 'radom forest' model, which is known to give highly accurate predictions. The model is 1st fit on the 'training' data (60% of 'train'set ). A 3-fold cross validation is used to select the tuning parameters
+
+
+#### Random forest
+
+```{r}
+#  a 3-fold cross validation will be used to select optimal tuning paarmeters
+trCont <- trainControl(method="cv", number=3, verboseIter=F)
+
+# fitting the model on training set
+fit <- train(classe ~ ., data=training, method="rf", trControl=trCont)
+
+fit$finalModel
+
+```
+
+'classe'is predicted now in 'testing' set (40% of "train" set). The confusion matrix is shown to compared predicted vs reference values
+
+```{r}
+pred <- predict(fit, newdata=testing)
+confusionMatrix(training$classe, pred)
+```
+
+As expected, we get a high accuracy (99.7%), being then the accuracy for the out-of-sample error of 0.3%
+Considering this good result, I am not considering any other model
+
+The model is retrained using the completed 'train'set
+```{r}
+#  a 3-fold cross validation will be used to select optimal tuning paarmeters
+trCont <- trainControl(method="cv", number=3, verboseIter=F)
+
+# fitting the model on training set
+fit <- train(classe ~ ., data=train, method="rf", trControl=trCont)
+```
