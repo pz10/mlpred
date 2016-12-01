@@ -128,3 +128,8 @@ trCont <- trainControl(method="cv", number=3, verboseIter=F)
 # fitting the model on training set
 fit <- train(classe ~ ., data=train, method="rf", trControl=trCont)
 ```
+
+Now it can be used to predict the 'validation'set:
+```{r}
+predict(fit, newdata=validation)
+```
